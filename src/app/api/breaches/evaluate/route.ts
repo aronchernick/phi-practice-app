@@ -4,9 +4,9 @@ import { authOptions } from '@/lib/auth'
 import { db } from '@/lib/db'
 import { breachIncidents } from '@/lib/schema'
 import { v4 as uuid } from 'uuid'
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions)
@@ -24,10 +24,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'scenario and answers required' }, { status: 400 })
   }
 
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 2048,
-    system: `You are a HIPAA breach response trainer. Evaluate the user's answers about a data breach scenario. Score them on:
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    systemInstruction: `You are a HIPAA breach response trainer. Evaluate the user's answers about a data breach scenario. Score them on:
 
 1. Correctly identifying exposed PHI types
 2. Knowing notification requirements (patients, HHS OCR, media if >500 affected)
@@ -57,16 +56,10 @@ Respond in JSON:
     "remediation": "..."
   }
 }`,
-    messages: [
-      {
-        role: 'user',
-        content: `Breach Scenario:\n${scenario.description}\n\nAffected patients: ${scenario.patientsAffected}\nPHI exposed: ${JSON.stringify(scenario.phiExposed)}\n\nUser's Answers:\n${JSON.stringify(answers, null, 2)}`,
-      },
-    ],
   })
 
-  const textBlock = message.content.find((b) => b.type === 'text')
-  const raw = textBlock?.text ?? '{}'
+  const result = await model.generateContent(`Breach Scenario:\n${scenario.description}\n\nAffected patients: ${scenario.patientsAffected}\nPHI exposed: ${JSON.stringify(scenario.phiExposed)}\n\nUser's Answers:\n${JSON.stringify(answers, null, 2)}`)
+  const raw = result.response.text()
 
   let evaluation
   try {

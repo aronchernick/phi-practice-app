@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import Anthropic from '@anthropic-ai/sdk'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY!)
 
 export async function POST() {
   const session = await getServerSession(authOptions)
@@ -11,10 +11,9 @@ export async function POST() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
-  const message = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1024,
-    system: `You are a HIPAA breach response trainer. Generate a short fictional data breach scenario at a healthcare organization. Include:
+  const model = genAI.getGenerativeModel({
+    model: 'gemini-2.0-flash',
+    systemInstruction: `You are a HIPAA breach response trainer. Generate a short fictional data breach scenario at a healthcare organization. Include:
 - What happened (e.g., laptop stolen, email sent to wrong recipient, ransomware)
 - What types of PHI were potentially exposed
 - How many patients were affected
@@ -33,16 +32,10 @@ Respond in JSON format:
     "What remediation steps should be taken?"
   ]
 }`,
-    messages: [
-      {
-        role: 'user',
-        content: 'Generate a new breach scenario for training.',
-      },
-    ],
   })
 
-  const textBlock = message.content.find((b) => b.type === 'text')
-  const raw = textBlock?.text ?? '{}'
+  const result = await model.generateContent('Generate a new breach scenario for training.')
+  const raw = result.response.text()
 
   let scenario
   try {
